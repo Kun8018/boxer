@@ -36,3 +36,6 @@ output/
 
 # ImGui
 imgui.ini
+
+# Demo virtual environment
+.venv-demo/
