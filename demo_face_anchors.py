@@ -406,26 +406,47 @@ class FaceAnchorDemo(OrbitViewer):
         self.tri_vbo.write(tri_data.tobytes())
         self.prog["u_mvp"].write(np.ascontiguousarray(mvp))
         if len(tri_data):
-            self.tri_vao.render(mglw.constants.TRIANGLES, vertices=len(tri_data))
+            self.tri_vao.render(self.ctx.TRIANGLES, vertices=len(tri_data))
 
         line_data = lb.line_array()
         self.line_vbo.write(line_data.tobytes())
         if len(line_data):
-            self.line_vao.render(mglw.constants.LINES, vertices=len(line_data))
+            self.line_vao.render(self.ctx.LINES, vertices=len(line_data))
 
-        # Speed / distance labels in screen space.
+        # Project speed / distance labels to screen space. They are drawn in
+        # render_ui() via the foreground draw list, because GetForegroundDrawList
+        # is only valid between imgui.new_frame() and imgui.render().
+        self.screen_labels = []
         if self.show_values:
-            draw = imgui.get_foreground_draw_list()
             for world_p, text in labels:
                 sp = self.world_to_screen(world_p, mvp)
-                if sp is None:
-                    continue
-                x, y = sp
-                draw.add_text(imgui.ImVec2(x + 8, y - 8),
-                              imgui.get_color_u32_rgba(1.0, 0.95, 0.75, 1.0),
-                              text)
+                if sp is not None:
+                    self.screen_labels.append((sp, text))
 
     def render_ui(self):
+        # Overlay labels through a borderless, input-transparent full-screen
+        # window (foreground draw list is avoided: its binding is finicky).
+        if getattr(self, "screen_labels", None):
+            overlay_flags = (
+                imgui.WINDOW_NO_TITLE_BAR
+                | imgui.WINDOW_NO_RESIZE
+                | imgui.WINDOW_NO_MOVE
+                | imgui.WINDOW_NO_SCROLLBAR
+                | imgui.WINDOW_NO_BRING_TO_FRONT_ON_FOCUS
+                | imgui.WINDOW_NO_FOCUS_ON_APPEARING
+                | imgui.WINDOW_NO_NAV
+                | int(imgui.WindowFlags_.no_inputs)
+                | int(imgui.WindowFlags_.no_background)
+            )
+            w, h = self.wnd.size
+            imgui.set_next_window_position(0, 0)
+            imgui.set_next_window_size(w, h)
+            imgui.begin("##speed_distance_labels", flags=overlay_flags)
+            for (x, y), text in self.screen_labels:
+                imgui.set_cursor_screen_pos(imgui.ImVec2(x + 8, y - 8))
+                imgui.text_colored(text, 1.0, 0.95, 0.75, 1.0)
+            imgui.end()
+
         imgui.begin("RQ1 demo controls")
         imgui.text("Annotations live in the OBJECT frame:")
         imgui.text("+X right, +Y front, +Z up")
